@@ -4,11 +4,9 @@
 #include <sstream>
 #include <fstream>
 
-#ifndef config_namespace
-#define config_namespace config
-#endif
-
+#ifdef config_namespace
 namespace config_namespace {
+#endif
 
     class ConfigEntry {
 
@@ -95,4 +93,6 @@ namespace config_namespace {
 
     };
 
+#ifdef config_namespace
 }
+#endif
