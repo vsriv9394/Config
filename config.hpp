@@ -1,100 +1,117 @@
 #pragma once
 
 #include <map>
-#include <string>
-#include <vector>
+#include <list>
 #include <sstream>
-#include <fstream>
 
-#ifdef config_namespace
-namespace config_namespace {
-#endif
+#include "config_entry.hpp"
 
-    class ConfigEntry {
+namespace vs
+{
+    class config
+    {
+        private: std::map<std::string, config_entry> config_map;
 
-        std::string value;
 
-        public:
 
-        ConfigEntry(void) { }
-
-        ConfigEntry(const std::string& val) : value(val) { }
-
-        operator int() const
-        { return stoi(value); }
-
-        operator double() const
-        { return stod(value); }
-
-        operator std::string() const
-        { return std::string(value.c_str()); }
-
-        operator std::vector<int>() const
-        { std::vector<int> v; std::stringstream ss(value); int t; while(ss>>t) v.push_back(t); return v; }
-
-        operator std::vector<double>() const
-        { std::vector<double> v; std::stringstream ss(value); double t; while(ss>>t) v.push_back(t); return v; }
-
-        operator std::vector<std::string>() const
-        { std::vector<std::string> v; std::stringstream ss(value); std::string t; while(ss>>t) v.push_back(t); return v; }
-
-    };
-
-    class Config {
-
-        std::map<std::string, ConfigEntry> configMap;
-
-        public:
-
-        ConfigEntry& operator[](const std::string& name) { return configMap[name]; }
-
-        const ConfigEntry& operator[](const std::string& name) const { return configMap.at(name); }
-
-        void addDefault(const std::string& name, const std::string& value) {
-            if(configMap.find(name)==configMap.end()) configMap[name] = ConfigEntry(value);
+        public: inline config_entry& operator[](const std::string& name)
+        {
+            return config_map[name];
         }
 
-        void writeToTerminal(void) {
-            for(auto& entry : configMap) {
-                std::cout << entry.first << " = \"" << (std::string)entry.second << "\"" << std::endl;
+
+
+        public: inline const config_entry& operator[](const std::string& name) const
+        {
+            return config_map.at(name);
+        }
+
+
+
+        public: inline void add_default(const std::string& name, const std::string& value)
+        {
+            if(config_map.find(name)==config_map.end())
+            {
+                config_map[name] = config_entry(value);
             }
         }
 
-        void writeToFile(const std::string& filename) {
-            std::ofstream outfile(filename.c_str());
-            for(auto& entry : configMap) {
-                outfile << entry.first << " = \"" << (std::string)entry.second << "\"" << std::endl;
+
+
+        private: void add_empty_entry_to_name_cascade(std::list<std::string>& name_cascade)
+        {
+            if (name_cascade.size()>0)
+            {
+                name_cascade.push_back(name_cascade.back() + ".");
             }
-            outfile.close();
+
+            else
+            {
+                name_cascade.push_back("");
+            }
         }
 
-        void readFromFile(const std::string& filename) {
-            std::ifstream infile(filename.c_str());
-            std::vector<std::string> nameVec, valueVec;
-            std::string name, value, buffer; bool valueMode;
-            nameVec.push_back("");
-            while(std::getline(infile, buffer)) {
+
+
+        private: void process_line(std::stringstream& stream, std::list<std::string>& name_cascade)
+        {
+            std::string buffer;
+            bool value_insertion_mode = false;
+            std::vector<std::string> value_vec;
+
+            while (stream >> buffer)
+            {
+                if      (buffer    ==     "{")
+                { add_empty_entry_to_name_cascade(name_cascade); }
+                else if (buffer    ==     "}")
+                { name_cascade.pop_back(); name_cascade.pop_back(); add_empty_entry_to_name_cascade(name_cascade); }
+                else if (buffer    ==     ":")
+                { value_insertion_mode = true; }
+                else if (buffer    ==     "#")
+                { break; }
+                else if (value_insertion_mode)
+                { value_vec.push_back(buffer); }
+                else
+                { name_cascade.back() += buffer; }
+            }
+
+            if (value_insertion_mode)
+            {
+                config_map[name_cascade.back()] = config_entry(value_vec);
+                name_cascade.pop_back();
+                add_empty_entry_to_name_cascade(name_cascade);
+            }
+        }
+
+
+
+        public: inline void write_to_stream(std::ostream& out_stream)
+        {
+            for(auto& entry : config_map)
+            {
+                std::string entry_name  = entry.first;
+                std::string entry_value = entry.second;
+
+                out_stream << entry_name;
+                out_stream << " = ";
+                out_stream << "\"" << entry_value << "\"";
+                out_stream << std::endl;
+            }
+        }
+
+
+
+        public: inline void read_from_stream(std::istream& in_stream)
+        {
+            std::list<std::string> name_cascade;
+            name_cascade.push_back("");
+
+            std::string buffer;
+            while(std::getline(in_stream, buffer))
+            {
                 std::stringstream ss(buffer);
-                valueMode = false; valueVec.clear();
-                while(ss>>buffer) {
-                    if(buffer=="{") nameVec.push_back("");
-                    else if(buffer=="}") nameVec.pop_back();
-                    else if(buffer=="#") break;
-                    else if(buffer==":") valueMode = true;
-                    else if (valueMode) valueVec.push_back(buffer);
-                    else { nameVec.pop_back(); nameVec.push_back(buffer); }
-                }
-                if (valueMode) {
-                    name = nameVec[0]; for(int i=1; i<nameVec.size(); i++) name = name + "." + nameVec[i];
-                    value = valueVec[0]; for(int i=1; i<valueVec.size(); i++) value = value + " " + valueVec[i];
-                    configMap[name] = ConfigEntry(value);
-                }
+                process_line(ss, name_cascade);
             }
-            infile.close();
         }
-
     };
-
-#ifdef config_namespace
 }
-#endif
